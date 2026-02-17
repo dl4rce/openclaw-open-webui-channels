@@ -361,7 +361,6 @@ export const openWebUIPlugin: ChannelPlugin<ResolvedOpenWebUIAccount> = {
       const to = (params.target as string) ?? (params.to as string);
       const message = (params.message as string) ?? "";
       const mediaUrl = (params.filePath as string) ?? (params.mediaUrl as string) ?? (params.media as string);
-      const threadId = (params.threadId as string) ?? ctx.toolContext?.currentThreadTs;
       const replyTo = params.replyTo as string | undefined;
 
       if (!to) {
@@ -391,9 +390,12 @@ export const openWebUIPlugin: ChannelPlugin<ResolvedOpenWebUIAccount> = {
           dataPayload.files = uploadedFiles;
         }
 
+        // Never set parentId in handleAction — Open WebUI hides messages with
+        // a parent_id that doesn't exist in the target channel, and there is
+        // no safe way for the agent to know the correct parent_id for a
+        // different channel. Use replyTo (reply_to_id) for replies instead.
         const posted = await postMessage(apiAccount, normalized, content || " ", {
           replyToId: replyTo,
-          parentId: threadId ? String(threadId) : undefined,
           data: dataPayload,
         });
 
