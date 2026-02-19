@@ -1,0 +1,168 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { StreamingSession, type StreamingDeps } from "./streaming.js";
+
+function createMockDeps(): StreamingDeps & {
+  postMessage: ReturnType<typeof vi.fn>;
+  updateMessage: ReturnType<typeof vi.fn>;
+} {
+  return {
+    postMessage: vi.fn().mockResolvedValue({ id: "msg-1" }),
+    updateMessage: vi.fn().mockResolvedValue(undefined),
+    log: {
+      info: vi.fn(),
+      error: vi.fn(),
+    },
+  };
+}
+
+describe("StreamingSession", () => {
+  let deps: ReturnType<typeof createMockDeps>;
+  let session: StreamingSession;
+
+  beforeEach(() => {
+    deps = createMockDeps();
+    session = new StreamingSession(deps);
+  });
+
+  describe("initial state", () => {
+    it("should not be streaming initially", () => {
+      expect(session.isStreaming).toBe(false);
+      expect(session.currentMessageId).toBeNull();
+      expect(session.currentText).toBe("");
+    });
+  });
+
+  describe("appendBlock", () => {
+    it("should post a new message on first block", async () => {
+      await session.appendBlock("Hello ", { replyToId: "reply-1" });
+
+      expect(deps.postMessage).toHaveBeenCalledOnce();
+      expect(deps.postMessage).toHaveBeenCalledWith("Hello ", { replyToId: "reply-1" });
+      expect(session.isStreaming).toBe(true);
+      expect(session.currentMessageId).toBe("msg-1");
+      expect(session.currentText).toBe("Hello ");
+    });
+
+    it("should update the existing message on subsequent blocks", async () => {
+      await session.appendBlock("Hello ", {});
+
+      await session.appendBlock("world", {});
+
+      expect(deps.postMessage).toHaveBeenCalledOnce();
+      expect(deps.updateMessage).toHaveBeenCalledOnce();
+      expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "Hello world");
+      expect(session.currentText).toBe("Hello world");
+    });
+
+    it("should accumulate text across multiple blocks", async () => {
+      await session.appendBlock("A", {});
+      await session.appendBlock("B", {});
+      await session.appendBlock("C", {});
+
+      expect(deps.postMessage).toHaveBeenCalledOnce();
+      expect(deps.updateMessage).toHaveBeenCalledTimes(2);
+      expect(deps.updateMessage).toHaveBeenNthCalledWith(1, "msg-1", "AB");
+      expect(deps.updateMessage).toHaveBeenNthCalledWith(2, "msg-1", "ABC");
+      expect(session.currentText).toBe("ABC");
+    });
+
+    it("should throw when postMessage returns no id on first block", async () => {
+      deps.postMessage.mockResolvedValue({});
+
+      await expect(session.appendBlock("text", {})).rejects.toThrow(
+        "Failed to post initial streaming message: no id returned"
+      );
+    });
+
+    it("should fall back to postMessage when updateMessage fails", async () => {
+      await session.appendBlock("Hello ", {});
+      deps.updateMessage.mockRejectedValueOnce(new Error("network error"));
+
+      await session.appendBlock("world", { replyToId: "r1" });
+
+      expect(deps.postMessage).toHaveBeenCalledTimes(2);
+      expect(deps.postMessage).toHaveBeenLastCalledWith("world", { replyToId: "r1" });
+      expect(session.isStreaming).toBe(false);
+    });
+  });
+
+  describe("finalize", () => {
+    it("should call postNew when not streaming", async () => {
+      const postNew = vi.fn();
+
+      await session.finalize("final text", {}, postNew);
+
+      expect(postNew).toHaveBeenCalledOnce();
+      expect(deps.updateMessage).not.toHaveBeenCalled();
+    });
+
+    it("should update the streaming message with accumulated + final text", async () => {
+      await session.appendBlock("Hello ", {});
+
+      await session.finalize("world!", { data: { files: [] } }, vi.fn());
+
+      expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "Hello world!", { data: { files: [] } });
+      expect(session.isStreaming).toBe(false);
+      expect(session.currentText).toBe("");
+    });
+
+    it("should use only accumulated text when final text is empty", async () => {
+      await session.appendBlock("accumulated", {});
+
+      await session.finalize("", {}, vi.fn());
+
+      expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "accumulated", {});
+    });
+
+    it("should fall back to postNew when updateMessage fails on finalize", async () => {
+      await session.appendBlock("Hello ", {});
+      deps.updateMessage.mockRejectedValueOnce(new Error("server error"));
+      const postNew = vi.fn();
+
+      await session.finalize("world!", {}, postNew);
+
+      expect(postNew).toHaveBeenCalledOnce();
+      expect(session.isStreaming).toBe(false);
+    });
+
+    it("should reset state after successful finalize", async () => {
+      await session.appendBlock("data", {});
+      expect(session.isStreaming).toBe(true);
+
+      await session.finalize("", {}, vi.fn());
+
+      expect(session.isStreaming).toBe(false);
+      expect(session.currentMessageId).toBeNull();
+      expect(session.currentText).toBe("");
+    });
+  });
+
+  describe("breakSession", () => {
+    it("should be a no-op when not streaming", async () => {
+      await session.breakSession({});
+
+      expect(deps.updateMessage).not.toHaveBeenCalled();
+      expect(deps.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("should finalize the accumulated text when streaming", async () => {
+      await session.appendBlock("partial text", {});
+
+      await session.breakSession({ data: {} });
+
+      expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "partial text", { data: {} });
+      expect(session.isStreaming).toBe(false);
+    });
+
+    it("should fall back to postMessage when updateMessage fails on break", async () => {
+      await session.appendBlock("partial", {});
+      deps.updateMessage.mockRejectedValueOnce(new Error("fail"));
+
+      await session.breakSession({ data: {} });
+
+      expect(deps.postMessage).toHaveBeenCalledTimes(2);
+      expect(deps.postMessage).toHaveBeenLastCalledWith("partial", { data: {} });
+      expect(session.isStreaming).toBe(false);
+    });
+  });
+});

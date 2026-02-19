@@ -1,0 +1,90 @@
+export interface StreamingDeps {
+  postMessage: (text: string, options: Record<string, unknown>) => Promise<{ id: string }>;
+  updateMessage: (messageId: string, text: string, options?: Record<string, unknown>) => Promise<void>;
+  log?: {
+    info: (msg: string) => void;
+    error: (msg: string) => void;
+  };
+}
+
+export class StreamingSession {
+  private messageId: string | null = null;
+  private accumulatedText = "";
+  private readonly deps: StreamingDeps;
+
+  constructor(deps: StreamingDeps) {
+    this.deps = deps;
+  }
+
+  get isStreaming(): boolean {
+    return this.messageId !== null;
+  }
+
+  get currentMessageId(): string | null {
+    return this.messageId;
+  }
+
+  get currentText(): string {
+    return this.accumulatedText;
+  }
+
+  private reset(): void {
+    this.messageId = null;
+    this.accumulatedText = "";
+  }
+
+  async appendBlock(text: string, postOptions: Record<string, unknown>): Promise<void> {
+    this.accumulatedText += text;
+
+    if (!this.messageId) {
+      this.deps.log?.info(`streaming start (${this.accumulatedText.length} chars)`);
+      const posted = await this.deps.postMessage(this.accumulatedText, postOptions);
+      if (!posted?.id) {
+        throw new Error("Failed to post initial streaming message: no id returned");
+      }
+      this.messageId = posted.id;
+      this.deps.log?.info(`streaming message created as ${this.messageId}`);
+      return;
+    }
+
+    this.deps.log?.info(`streaming update ${this.messageId} (${this.accumulatedText.length} chars)`);
+    try {
+      await this.deps.updateMessage(this.messageId, this.accumulatedText);
+    } catch (updateErr) {
+      this.deps.log?.error(`updateMessage failed, falling back to postMessage: ${String(updateErr)}`);
+      this.reset();
+      await this.deps.postMessage(text, postOptions);
+    }
+  }
+
+  async finalize(
+    text: string,
+    updateOptions: Record<string, unknown>,
+    postNew: () => Promise<void>,
+  ): Promise<void> {
+    if (!this.messageId) {
+      await postNew();
+      return;
+    }
+
+    const finalText = text ? this.accumulatedText + text : this.accumulatedText;
+    const msgId = this.messageId;
+    this.reset();
+
+    this.deps.log?.info(`finalizing streaming message ${msgId} (${finalText.length} chars)`);
+    try {
+      await this.deps.updateMessage(msgId, finalText, updateOptions);
+    } catch (updateErr) {
+      this.deps.log?.error(`updateMessage failed on finalize, falling back to postMessage: ${String(updateErr)}`);
+      await postNew();
+    }
+  }
+
+  async breakSession(postOptions: Record<string, unknown>): Promise<void> {
+    if (!this.messageId) return;
+    const textSnapshot = this.accumulatedText;
+    await this.finalize("", postOptions, async () => {
+      await this.deps.postMessage(textSnapshot, postOptions);
+    });
+  }
+}

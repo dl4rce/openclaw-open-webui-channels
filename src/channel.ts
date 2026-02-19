@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { getOpenWebUIRuntime } from "./runtime.js";
 import {
   postMessage,
+  updateMessage,
   getAuthToken,
   getMessageById,
   addReaction,
@@ -15,6 +16,7 @@ import {
   type OpenWebUIAccount,
   type OpenWebUIFile,
 } from "./api.js";
+import { StreamingSession } from "./streaming.js";
 import { connectSocket, disconnectSocket, type ChannelEvent, getConnection } from "./socket.js";
 
 // Plugin metadata
@@ -918,9 +920,98 @@ async function handleChannelEvent(
     emitTyping(false);
   };
 
+  const uploadMediaFiles = async (
+    mediaSpecs: OutboundMediaSpec[],
+  ): Promise<OpenWebUIFile[]> => {
+    const uploadedFiles: OpenWebUIFile[] = [];
+    for (const media of mediaSpecs) {
+      try {
+        const uploaded = await uploadFile(apiAccount, media.path, {
+          filename: media.filename,
+          mimeType: media.mimeType,
+        });
+        uploadedFiles.push(uploaded);
+      } catch (uploadErr) {
+        log?.error(`[${account.accountId}] deliver: failed to upload file ${media.path}: ${String(uploadErr)}`);
+      }
+    }
+    return uploadedFiles;
+  };
+
+  const postNewMessage = async (
+    text: string,
+    uploadedFiles: OpenWebUIFile[],
+    payloadRecord: Record<string, unknown>,
+  ): Promise<void> => {
+    const replyToOverride =
+      (payloadRecord.replyToId as string | undefined) ??
+      (payloadRecord.reply_to_id as string | undefined) ??
+      replyToId;
+    const parentOverride =
+      (payloadRecord.parentId as string | undefined) ??
+      (payloadRecord.threadId as string | undefined) ??
+      parentId;
+    const dataOverride = (payloadRecord.data as Record<string, unknown> | undefined) ?? {};
+    const metaOverride = (payloadRecord.meta as Record<string, unknown> | undefined) ?? {};
+    const dataPayloadWithFiles: Record<string, unknown> = { ...dataOverride };
+    if (uploadedFiles.length > 0) {
+      dataPayloadWithFiles.files = uploadedFiles.map(wrapUploadedFile);
+    }
+
+    const chunks = text
+      ? core.channel.text.chunkMarkdownText(text, textLimit)
+      : [""];
+    if (!chunks.length && text) {
+      chunks.push(text);
+    }
+
+    log?.info(`[${account.accountId}] deliver: posting ${chunks.length} chunk(s) (${text.length} chars) to ${outboundTarget} (replyTo=${replyToOverride ?? "none"}, parent=${parentOverride ?? "none"})`);
+
+    for (const [index, chunk] of chunks.entries()) {
+      const content = chunk === "" ? " " : chunk;
+      const dataPayload = index === 0 ? dataPayloadWithFiles : dataOverride;
+      const posted = await postMessage(apiAccount, outboundTarget, content, {
+        replyToId: replyToOverride,
+        parentId: parentOverride,
+        data: dataPayload,
+        meta: metaOverride,
+      });
+      if (posted?.id) {
+        log?.info(`[${account.accountId}] deliver: chunk ${index + 1}/${chunks.length} saved as ${posted.id} (${content.length}ch)`);
+      } else {
+        log?.error(`[${account.accountId}] deliver: chunk ${index + 1}/${chunks.length} returned no id! response=${JSON.stringify(posted).slice(0, 300)}`);
+      }
+    }
+    log?.info(`[${account.accountId}] deliver: successfully posted to ${outboundTarget}`);
+  };
+
+  const streaming = new StreamingSession({
+    postMessage: async (text, options) => {
+      const replyToOverride = (options.replyToId as string | undefined) ?? replyToId;
+      const parentOverride = (options.parentId as string | undefined) ?? parentId;
+      const dataOverride = (options.data as Record<string, unknown> | undefined) ?? {};
+      const metaOverride = (options.meta as Record<string, unknown> | undefined) ?? {};
+      return postMessage(apiAccount, outboundTarget, text, {
+        replyToId: replyToOverride,
+        parentId: parentOverride,
+        data: dataOverride,
+        meta: metaOverride,
+      });
+    },
+    updateMessage: async (messageId, text, options) => {
+      const dataOverride = (options?.data as Record<string, unknown> | undefined) ?? {};
+      const metaOverride = (options?.meta as Record<string, unknown> | undefined) ?? {};
+      await updateMessage(apiAccount, outboundTarget, messageId, text, {
+        data: dataOverride,
+        meta: metaOverride,
+      });
+    },
+    log: log ? { info: (m) => log.info(`[${account.accountId}] deliver: ${m}`), error: (m) => log.error(`[${account.accountId}] deliver: ${m}`) } : undefined,
+  });
+
   const { dispatcher, replyOptions, markDispatchIdle } =
     core.channel.reply.createReplyDispatcherWithTyping({
-      deliver: async (payload) => {
+      deliver: async (payload, info) => {
         try {
           const payloadRecord = payload as Record<string, unknown>;
           const reaction = extractReactionPayload(payloadRecord);
@@ -937,78 +1028,64 @@ async function handleChannelEvent(
           }
 
           const mediaSpecs = coerceOutboundMedia(payloadRecord);
-          const uploadedFiles: OpenWebUIFile[] = [];
-          for (const media of mediaSpecs) {
-            try {
-              const uploaded = await uploadFile(apiAccount, media.path, {
-                filename: media.filename,
-                mimeType: media.mimeType,
-              });
-              uploadedFiles.push(uploaded);
-            } catch (uploadErr) {
-              log?.error(`[${account.accountId}] deliver: failed to upload file ${media.path}: ${String(uploadErr)}`);
-            }
-          }
+          const uploadedFiles = await uploadMediaFiles(mediaSpecs);
 
-          const responseText = payloadRecord.text as string | undefined;
-          const trimmed = responseText?.trim() ?? "";
-          if (!trimmed && uploadedFiles.length === 0) {
+          const responseText = (payloadRecord.text as string | undefined) ?? "";
+          const kind = info.kind;
+          const hasText = responseText.trim().length > 0;
+          // For streaming blocks, whitespace-only chunks (e.g. "\n\n") must still
+          // be accumulated — they carry paragraph breaks, list prefixes, etc.
+          // Only skip truly empty payloads for non-block deliveries.
+          if (!hasText && uploadedFiles.length === 0) {
             if (mediaSpecs.length > 0) {
               throw new Error(`All ${mediaSpecs.length} media upload(s) failed and no text content to deliver`);
             }
-            log?.debug?.(`[${account.accountId}] deliver: skipping empty payload`);
+            if (kind === "block" && responseText.length > 0) {
+              // Whitespace-only block chunk — still accumulate it
+            } else {
+              log?.debug?.(`[${account.accountId}] deliver: skipping empty payload`);
+              return;
+            }
+          }
+
+          const postOptions = {
+            replyToId: (payloadRecord.replyToId as string | undefined) ?? (payloadRecord.reply_to_id as string | undefined),
+            parentId: (payloadRecord.parentId as string | undefined) ?? (payloadRecord.threadId as string | undefined),
+            data: (payloadRecord.data as Record<string, unknown> | undefined) ?? {},
+            meta: (payloadRecord.meta as Record<string, unknown> | undefined) ?? {},
+          };
+
+          if (kind === "block" && uploadedFiles.length === 0) {
+            await streaming.appendBlock(responseText, postOptions);
             return;
           }
 
-          // Chunk if needed
-          const chunks = trimmed
-            ? core.channel.text.chunkMarkdownText(trimmed, textLimit)
-            : [""];
-          if (!chunks.length && trimmed) {
-            chunks.push(trimmed);
-          }
-
-          const replyToOverride =
-            (payloadRecord.replyToId as string | undefined) ??
-            (payloadRecord.reply_to_id as string | undefined) ??
-            replyToId;
-          const parentOverride =
-            (payloadRecord.parentId as string | undefined) ??
-            (payloadRecord.threadId as string | undefined) ??
-            parentId;
-          const dataOverride = (payloadRecord.data as Record<string, unknown> | undefined) ?? {};
-          const metaOverride = (payloadRecord.meta as Record<string, unknown> | undefined) ?? {};
-          const dataPayloadWithFiles: Record<string, unknown> = { ...dataOverride };
-          if (uploadedFiles.length > 0) {
-            dataPayloadWithFiles.files = uploadedFiles.map(wrapUploadedFile);
-          }
-
-          log?.info(`[${account.accountId}] deliver: posting ${chunks.length} chunk(s) (${trimmed.length} chars) to ${outboundTarget} (replyTo=${replyToOverride ?? "none"}, parent=${parentOverride ?? "none"})`);
-
-          for (const [index, chunk] of chunks.entries()) {
-            const content = chunk === "" ? " " : chunk;
-            const dataPayload = index === 0 ? dataPayloadWithFiles : dataOverride;
-            try {
-              const posted = await postMessage(apiAccount, outboundTarget, content, {
-                replyToId: replyToOverride,
-                parentId: parentOverride,
-                data: dataPayload,
-                meta: metaOverride,
-              });
-              if (posted?.id) {
-                log?.info(`[${account.accountId}] deliver: chunk ${index + 1}/${chunks.length} saved as ${posted.id} (${content.length}ch)`);
-              } else {
-                log?.error(`[${account.accountId}] deliver: chunk ${index + 1}/${chunks.length} returned no id! response=${JSON.stringify(posted).slice(0, 300)}`);
-              }
-            } catch (postErr) {
-              log?.error(`[${account.accountId}] deliver: failed to post chunk ${index + 1}/${chunks.length} to ${outboundTarget}: ${String(postErr)}`);
-              throw postErr; // Re-throw to let core handle the failure
+          if (kind === "block" && uploadedFiles.length > 0) {
+            if (streaming.isStreaming) {
+              await streaming.breakSession(postOptions);
             }
+            await postNewMessage(responseText, uploadedFiles, payloadRecord);
+            return;
           }
-          log?.info(`[${account.accountId}] deliver: successfully posted to ${outboundTarget}`);
+
+          if (kind === "final" || kind === "tool") {
+            if (uploadedFiles.length > 0) {
+              if (streaming.isStreaming) {
+                await streaming.breakSession(postOptions);
+              }
+              await postNewMessage(responseText, uploadedFiles, payloadRecord);
+              return;
+            }
+            await streaming.finalize(responseText, postOptions, async () => {
+              await postNewMessage(responseText, uploadedFiles, payloadRecord);
+            });
+            return;
+          }
+
+          await postNewMessage(responseText, uploadedFiles, payloadRecord);
         } catch (deliverErr) {
           log?.error(`[${account.accountId}] deliver: unexpected error: ${String(deliverErr)}`);
-          throw deliverErr; // Re-throw so core knows delivery failed
+          throw deliverErr;
         }
       },
       onReplyStart: startTyping,
