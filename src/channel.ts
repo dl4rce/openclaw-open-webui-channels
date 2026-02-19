@@ -299,6 +299,9 @@ export const openWebUIPlugin: ChannelPlugin<ResolvedOpenWebUIAccount> = {
     reactions: true,
     threads: true,
   },
+  streaming: {
+    blockStreamingCoalesceDefaults: { minChars: 1500, idleMs: 1000 },
+  },
   threading: {
     resolveReplyToMode: () => "first",
     buildToolContext: ({ context, hasRepliedRef }) => {
