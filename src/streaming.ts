@@ -60,10 +60,10 @@ export class StreamingSession {
   async finalize(
     text: string,
     updateOptions: Record<string, unknown>,
-    postNew: () => Promise<void>,
+    postNew: (fullText: string) => Promise<void>,
   ): Promise<void> {
     if (!this.messageId) {
-      await postNew();
+      await postNew(text);
       return;
     }
 
@@ -76,15 +76,14 @@ export class StreamingSession {
       await this.deps.updateMessage(msgId, finalText, updateOptions);
     } catch (updateErr) {
       this.deps.log?.error(`updateMessage failed on finalize, falling back to postMessage: ${String(updateErr)}`);
-      await postNew();
+      await postNew(finalText);
     }
   }
 
   async breakSession(postOptions: Record<string, unknown>): Promise<void> {
     if (!this.messageId) return;
-    const textSnapshot = this.accumulatedText;
-    await this.finalize("", postOptions, async () => {
-      await this.deps.postMessage(textSnapshot, postOptions);
+    await this.finalize("", postOptions, async (fullText) => {
+      await this.deps.postMessage(fullText, postOptions);
     });
   }
 }

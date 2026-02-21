@@ -1079,8 +1079,8 @@ async function handleChannelEvent(
               await postNewMessage(responseText, uploadedFiles, payloadRecord);
               return;
             }
-            await streaming.finalize(responseText, postOptions, async () => {
-              await postNewMessage(responseText, uploadedFiles, payloadRecord);
+            await streaming.finalize(responseText, postOptions, async (fullText) => {
+              await postNewMessage(fullText, uploadedFiles, payloadRecord);
             });
             return;
           }

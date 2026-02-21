@@ -87,12 +87,13 @@ describe("StreamingSession", () => {
   });
 
   describe("finalize", () => {
-    it("should call postNew when not streaming", async () => {
+    it("should call postNew with the text when not streaming", async () => {
       const postNew = vi.fn();
 
       await session.finalize("final text", {}, postNew);
 
       expect(postNew).toHaveBeenCalledOnce();
+      expect(postNew).toHaveBeenCalledWith("final text");
       expect(deps.updateMessage).not.toHaveBeenCalled();
     });
 
@@ -114,7 +115,7 @@ describe("StreamingSession", () => {
       expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "accumulated", {});
     });
 
-    it("should fall back to postNew when updateMessage fails on finalize", async () => {
+    it("should fall back to postNew with full accumulated text when updateMessage fails on finalize", async () => {
       await session.appendBlock("Hello ", {});
       deps.updateMessage.mockRejectedValueOnce(new Error("server error"));
       const postNew = vi.fn();
@@ -122,6 +123,7 @@ describe("StreamingSession", () => {
       await session.finalize("world!", {}, postNew);
 
       expect(postNew).toHaveBeenCalledOnce();
+      expect(postNew).toHaveBeenCalledWith("Hello world!");
       expect(session.isStreaming).toBe(false);
     });
 
