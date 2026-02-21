@@ -51,7 +51,7 @@ async function simulateDeliver(
     return;
   }
 
-  if (kind === "final" || kind === "tool") {
+  if (kind === "final") {
     if (hasMedia) {
       if (streaming.isStreaming) {
         await streaming.breakSession(postOptions);
@@ -62,6 +62,14 @@ async function simulateDeliver(
     await streaming.finalize(text, postOptions, async () => {
       postNewMessage(text);
     });
+    return;
+  }
+
+  if (kind === "tool") {
+    if (streaming.isStreaming) {
+      await streaming.breakSession(postOptions);
+    }
+    postNewMessage(text);
     return;
   }
 
@@ -195,7 +203,7 @@ describe("deliver branching logic", () => {
   });
 
   describe("tool kind", () => {
-    it("should behave like final without media", async () => {
+    it("should break streaming and post tool text as a new message", async () => {
       await simulateDeliver(
         { text: "block", kind: "block", hasMedia: false },
         streaming, postNewMessage, postOptions,
@@ -205,11 +213,23 @@ describe("deliver branching logic", () => {
         streaming, postNewMessage, postOptions,
       );
 
-      expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "block result", postOptions);
+      expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "block", postOptions);
+      expect(postNewMessage).toHaveBeenCalledWith(" result");
       expect(streaming.isStreaming).toBe(false);
     });
 
-    it("should behave like final with media", async () => {
+    it("should post tool output directly when no active streaming", async () => {
+      await simulateDeliver(
+        { text: "tool only", kind: "tool", hasMedia: false },
+        streaming, postNewMessage, postOptions,
+      );
+
+      expect(deps.updateMessage).not.toHaveBeenCalled();
+      expect(postNewMessage).toHaveBeenCalledWith("tool only");
+      expect(streaming.isStreaming).toBe(false);
+    });
+
+    it("should break streaming and post tool media as new message", async () => {
       await simulateDeliver(
         { text: "block", kind: "block", hasMedia: false },
         streaming, postNewMessage, postOptions,

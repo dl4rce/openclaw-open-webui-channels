@@ -1071,7 +1071,7 @@ async function handleChannelEvent(
             return;
           }
 
-          if (kind === "final" || kind === "tool") {
+          if (kind === "final") {
             if (uploadedFiles.length > 0) {
               if (streaming.isStreaming) {
                 await streaming.breakSession(postOptions);
@@ -1082,6 +1082,14 @@ async function handleChannelEvent(
             await streaming.finalize(responseText, postOptions, async () => {
               await postNewMessage(responseText, uploadedFiles, payloadRecord);
             });
+            return;
+          }
+
+          if (kind === "tool") {
+            if (streaming.isStreaming) {
+              await streaming.breakSession(postOptions);
+            }
+            await postNewMessage(responseText, uploadedFiles, payloadRecord);
             return;
           }
 
