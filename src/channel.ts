@@ -1075,10 +1075,15 @@ async function handleChannelEvent(
 
           if (kind === "final") {
             if (uploadedFiles.length > 0) {
+              let finalMediaText = responseText;
               if (streaming.isStreaming) {
+                const streamedText = streaming.currentText;
                 await streaming.breakSession(postOptions);
+                if (finalMediaText && streamedText && finalMediaText.startsWith(streamedText)) {
+                  finalMediaText = finalMediaText.slice(streamedText.length);
+                }
               }
-              await postNewMessage(responseText, uploadedFiles, payloadRecord);
+              await postNewMessage(finalMediaText, uploadedFiles, payloadRecord);
               return;
             }
             await streaming.finalize(responseText, postOptions, async (fullText) => {

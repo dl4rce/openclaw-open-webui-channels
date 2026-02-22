@@ -53,10 +53,15 @@ async function simulateDeliver(
 
   if (kind === "final") {
     if (hasMedia) {
+      let finalMediaText = text;
       if (streaming.isStreaming) {
+        const streamedText = streaming.currentText;
         await streaming.breakSession(postOptions);
+        if (finalMediaText && streamedText && finalMediaText.startsWith(streamedText)) {
+          finalMediaText = finalMediaText.slice(streamedText.length);
+        }
       }
-      postNewMessage(text);
+      postNewMessage(finalMediaText);
       return;
     }
     await streaming.finalize(text, postOptions, async () => {
@@ -205,6 +210,22 @@ describe("deliver branching logic", () => {
       expect(streaming.isStreaming).toBe(false);
       expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "streaming text", postOptions);
       expect(postNewMessage).toHaveBeenCalledWith("final media");
+    });
+
+    it("should deduplicate streamed prefix when final media payload already includes full text", async () => {
+      await simulateDeliver(
+        { text: "Hello ", kind: "block", hasMedia: false },
+        streaming, postNewMessage, postOptions,
+      );
+
+      await simulateDeliver(
+        { text: "Hello world!", kind: "final", hasMedia: true },
+        streaming, postNewMessage, postOptions,
+      );
+
+      expect(streaming.isStreaming).toBe(false);
+      expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "Hello ", postOptions);
+      expect(postNewMessage).toHaveBeenCalledWith("world!");
     });
 
     it("should post media as new message when no active streaming", async () => {
