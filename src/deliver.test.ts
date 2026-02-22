@@ -163,6 +163,22 @@ describe("deliver branching logic", () => {
       expect(postNewMessage).not.toHaveBeenCalled();
     });
 
+    it("should use final payload directly when it already includes streamed text", async () => {
+      await simulateDeliver(
+        { text: "Hello ", kind: "block", hasMedia: false },
+        streaming, postNewMessage, postOptions,
+      );
+
+      await simulateDeliver(
+        { text: "Hello world!", kind: "final", hasMedia: false },
+        streaming, postNewMessage, postOptions,
+      );
+
+      expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "Hello world!", postOptions);
+      expect(streaming.isStreaming).toBe(false);
+      expect(postNewMessage).not.toHaveBeenCalled();
+    });
+
     it("should post new message when no active streaming", async () => {
       await simulateDeliver(
         { text: "final only", kind: "final", hasMedia: false },

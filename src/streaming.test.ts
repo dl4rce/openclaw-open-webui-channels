@@ -107,6 +107,16 @@ describe("StreamingSession", () => {
       expect(session.currentText).toBe("");
     });
 
+    it("should use final payload directly when it already includes accumulated text", async () => {
+      await session.appendBlock("Hello ", {});
+
+      await session.finalize("Hello world!", {}, vi.fn());
+
+      expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "Hello world!", {});
+      expect(session.isStreaming).toBe(false);
+      expect(session.currentText).toBe("");
+    });
+
     it("should use only accumulated text when final text is empty", async () => {
       await session.appendBlock("accumulated", {});
 
@@ -121,6 +131,18 @@ describe("StreamingSession", () => {
       const postNew = vi.fn();
 
       await session.finalize("world!", {}, postNew);
+
+      expect(postNew).toHaveBeenCalledOnce();
+      expect(postNew).toHaveBeenCalledWith("Hello world!");
+      expect(session.isStreaming).toBe(false);
+    });
+
+    it("should avoid duplicate prefixes in fallback when final payload is already complete", async () => {
+      await session.appendBlock("Hello ", {});
+      deps.updateMessage.mockRejectedValueOnce(new Error("server error"));
+      const postNew = vi.fn();
+
+      await session.finalize("Hello world!", {}, postNew);
 
       expect(postNew).toHaveBeenCalledOnce();
       expect(postNew).toHaveBeenCalledWith("Hello world!");

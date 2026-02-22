@@ -33,6 +33,21 @@ export class StreamingSession {
     this.accumulatedText = "";
   }
 
+  private resolveFinalText(text: string): string {
+    if (!text) {
+      return this.accumulatedText;
+    }
+    if (!this.accumulatedText) {
+      return text;
+    }
+    // Some fallback paths emit a complete final reply after block chunks.
+    // Avoid duplicating prefixes when final text already contains streamed content.
+    if (text.startsWith(this.accumulatedText)) {
+      return text;
+    }
+    return this.accumulatedText + text;
+  }
+
   async appendBlock(text: string, postOptions: Record<string, unknown>): Promise<void> {
     this.accumulatedText += text;
 
@@ -67,7 +82,7 @@ export class StreamingSession {
       return;
     }
 
-    const finalText = text ? this.accumulatedText + text : this.accumulatedText;
+    const finalText = this.resolveFinalText(text);
     const msgId = this.messageId;
     this.reset();
 
