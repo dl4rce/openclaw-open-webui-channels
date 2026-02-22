@@ -1045,6 +1045,8 @@ async function handleChannelEvent(
             }
             if (kind === "block" && responseText.length > 0) {
               // Whitespace-only block chunk — still accumulate it
+            } else if (kind === "final" && streaming.isStreaming) {
+              // Empty final payload but stream is active — must still finalize
             } else {
               log?.debug?.(`[${account.accountId}] deliver: skipping empty payload`);
               return;
