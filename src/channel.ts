@@ -1012,6 +1012,8 @@ async function handleChannelEvent(
     log: log ? { info: (m) => log.info(`[${account.accountId}] deliver: ${m}`), error: (m) => log.error(`[${account.accountId}] deliver: ${m}`) } : undefined,
   });
 
+  let lastStreamingPostOptions: Record<string, unknown> = {};
+
   const { dispatcher, replyOptions, markDispatchIdle } =
     core.channel.reply.createReplyDispatcherWithTyping({
       deliver: async (payload, info) => {
@@ -1061,6 +1063,7 @@ async function handleChannelEvent(
           };
 
           if (kind === "block" && uploadedFiles.length === 0) {
+            lastStreamingPostOptions = postOptions;
             await streaming.appendBlock(responseText, postOptions);
             return;
           }
@@ -1123,6 +1126,13 @@ async function handleChannelEvent(
   } catch (err) {
     log?.error(`[${account.accountId}] failed to dispatch message: ${String(err)}`);
   } finally {
+    if (streaming.isStreaming) {
+      try {
+        await streaming.breakSession(lastStreamingPostOptions);
+      } catch (flushErr) {
+        log?.error(`[${account.accountId}] stream flush failed: ${String(flushErr)}`);
+      }
+    }
     markDispatchIdle();
     await stopTyping();
   }

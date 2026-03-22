@@ -66,9 +66,7 @@ export class StreamingSession {
     try {
       await this.deps.updateMessage(this.messageId, this.accumulatedText);
     } catch (updateErr) {
-      this.deps.log?.error(`updateMessage failed, falling back to postMessage: ${String(updateErr)}`);
-      this.reset();
-      await this.deps.postMessage(text, postOptions);
+      this.deps.log?.error(`updateMessage failed: ${String(updateErr)}`);
     }
   }
 

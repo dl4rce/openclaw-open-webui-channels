@@ -74,15 +74,18 @@ describe("StreamingSession", () => {
       );
     });
 
-    it("should fall back to postMessage when updateMessage fails", async () => {
+    it("should keep trying updates after a transient failure", async () => {
       await session.appendBlock("Hello ", {});
       deps.updateMessage.mockRejectedValueOnce(new Error("network error"));
 
-      await session.appendBlock("world", { replyToId: "r1" });
+      await session.appendBlock("world", {});
+      await session.appendBlock("!", {});
 
-      expect(deps.postMessage).toHaveBeenCalledTimes(2);
-      expect(deps.postMessage).toHaveBeenLastCalledWith("world", { replyToId: "r1" });
-      expect(session.isStreaming).toBe(false);
+      // All three updates attempted — first fails, second succeeds with full text
+      expect(deps.updateMessage).toHaveBeenCalledTimes(2);
+      expect(deps.updateMessage).toHaveBeenNthCalledWith(1, "msg-1", "Hello world");
+      expect(deps.updateMessage).toHaveBeenNthCalledWith(2, "msg-1", "Hello world!");
+      expect(session.currentText).toBe("Hello world!");
     });
   });
 
@@ -123,6 +126,28 @@ describe("StreamingSession", () => {
       await session.finalize("", {}, vi.fn());
 
       expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "accumulated", {});
+    });
+
+    it("should finalize with complete text after updates were stopped", async () => {
+      await session.appendBlock("Hello ", {});
+      deps.updateMessage.mockRejectedValueOnce(new Error("network error"));
+      await session.appendBlock("world", {});
+      // updates stopped, but accumulation continued
+
+      await session.finalize("!", {}, vi.fn());
+
+      // finalize updates the same message with the full accumulated text + delta
+      expect(deps.updateMessage).toHaveBeenLastCalledWith("msg-1", "Hello world!", {});
+    });
+
+    it("should finalize with complete response after updates were stopped", async () => {
+      await session.appendBlock("Hello ", {});
+      deps.updateMessage.mockRejectedValueOnce(new Error("network error"));
+      await session.appendBlock("world", {});
+
+      await session.finalize("Hello world! Done.", {}, vi.fn());
+
+      expect(deps.updateMessage).toHaveBeenLastCalledWith("msg-1", "Hello world! Done.", {});
     });
 
     it("should fall back to postNew with full accumulated text when updateMessage fails on finalize", async () => {
