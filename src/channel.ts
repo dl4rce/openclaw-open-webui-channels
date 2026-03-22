@@ -40,6 +40,7 @@ export interface OpenWebUIChannelConfig {
   requireMention?: boolean;
   name?: string;
   textChunkLimit?: number;
+  blockStreaming?: boolean;
 }
 
 export interface ResolvedOpenWebUIAccount {
@@ -1121,7 +1122,13 @@ async function handleChannelEvent(
       ctx: finalizedCtx,
       cfg: config,
       dispatcher,
-      replyOptions,
+      replyOptions: {
+        ...replyOptions,
+        disableBlockStreaming:
+          typeof account.config.blockStreaming === "boolean"
+            ? !account.config.blockStreaming
+            : undefined,
+      },
     });
   } catch (err) {
     log?.error(`[${account.accountId}] failed to dispatch message: ${String(err)}`);
