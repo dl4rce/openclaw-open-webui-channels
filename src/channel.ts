@@ -40,7 +40,7 @@ export interface OpenWebUIChannelConfig {
   requireMention?: boolean;
   name?: string;
   textChunkLimit?: number;
-  blockStreaming?: boolean;
+  streaming?: boolean;
 }
 
 export interface ResolvedOpenWebUIAccount {
@@ -1125,8 +1125,8 @@ async function handleChannelEvent(
       replyOptions: {
         ...replyOptions,
         disableBlockStreaming:
-          typeof account.config.blockStreaming === "boolean"
-            ? !account.config.blockStreaming
+          typeof account.config.streaming === "boolean"
+            ? !account.config.streaming
             : undefined,
       },
     });
