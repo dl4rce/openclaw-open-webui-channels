@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0] - 2026-03-23
+
+### Added
+
+- Block streaming support: stream agent replies incrementally via message updates instead of sending the full text at once
+- `blockStreamingCoalesceDefaults` configuration (minChars: 1500, idleMs: 1000) for controlling stream coalescing behavior
+- Tool-kind payloads always break active streaming and post as a standalone message
+
 ## [0.4.2] - 2026-02-18
 
 ### Fixed
