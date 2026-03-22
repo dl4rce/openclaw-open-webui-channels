@@ -1126,6 +1126,8 @@ async function handleChannelEvent(
   } catch (err) {
     log?.error(`[${account.accountId}] failed to dispatch message: ${String(err)}`);
   } finally {
+    dispatcher.markComplete();
+    await dispatcher.waitForIdle();
     if (streaming.isStreaming) {
       try {
         await streaming.breakSession(lastStreamingPostOptions);
