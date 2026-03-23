@@ -82,14 +82,17 @@ export class StreamingSession {
 
     const finalText = this.resolveFinalText(text);
     const msgId = this.messageId;
-    this.reset();
 
     this.deps.log?.info(`finalizing streaming message ${msgId} (${finalText.length} chars)`);
     try {
-      await this.deps.updateMessage(msgId, finalText, updateOptions);
-    } catch (updateErr) {
-      this.deps.log?.error(`updateMessage failed on finalize, falling back to postMessage: ${String(updateErr)}`);
-      await postNew(finalText);
+      try {
+        await this.deps.updateMessage(msgId, finalText, updateOptions);
+      } catch (updateErr) {
+        this.deps.log?.error(`updateMessage failed on finalize, falling back to postMessage: ${String(updateErr)}`);
+        await postNew(finalText);
+      }
+    } finally {
+      this.reset();
     }
   }
 
