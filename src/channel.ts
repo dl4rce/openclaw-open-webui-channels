@@ -1,4 +1,5 @@
 import type { ChannelPlugin, OpenClawConfig, PluginRuntime } from "openclaw/plugin-sdk";
+import { resolveChannelStreamingBlockEnabled } from "openclaw/plugin-sdk/channel-streaming";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -40,7 +41,10 @@ export interface OpenWebUIChannelConfig {
   requireMention?: boolean;
   name?: string;
   textChunkLimit?: number;
-  streaming?: boolean;
+  // Legacy scalar form. New configs use the nested `streaming.block.enabled`
+  // object below; `resolveChannelStreamingBlockEnabled` handles both shapes.
+  streaming?: boolean | { block?: { enabled?: boolean } };
+  blockStreaming?: boolean;
 }
 
 export interface ResolvedOpenWebUIAccount {
@@ -1124,10 +1128,14 @@ async function handleChannelEvent(
       dispatcher,
       replyOptions: {
         ...replyOptions,
-        disableBlockStreaming:
-          typeof account.config.streaming === "boolean"
-            ? !account.config.streaming
-            : undefined,
+        disableBlockStreaming: (() => {
+          // Resolve `streaming.block.enabled` (new) or `blockStreaming` (legacy).
+          const enabled = resolveChannelStreamingBlockEnabled(account.config);
+          if (typeof enabled === "boolean") return !enabled;
+          // Very old legacy: scalar `streaming: true/false`.
+          if (typeof account.config.streaming === "boolean") return !account.config.streaming;
+          return undefined;
+        })(),
       },
     });
   } catch (err) {
