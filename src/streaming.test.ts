@@ -150,7 +150,9 @@ describe("StreamingSession", () => {
       expect(deps.updateMessage).toHaveBeenLastCalledWith("msg-1", "Hello world! Done.", {});
     });
 
-    it("should fall back to postNew with full accumulated text when updateMessage fails on finalize", async () => {
+    it("should post only the unseen delta when updateMessage fails on finalize", async () => {
+      // Original streamed message "Hello " stays at last successful edit.
+      // Posting the full "Hello world!" would duplicate "Hello " for the user.
       await session.appendBlock("Hello ", {});
       deps.updateMessage.mockRejectedValueOnce(new Error("server error"));
       const postNew = vi.fn();
@@ -158,11 +160,11 @@ describe("StreamingSession", () => {
       await session.finalize("world!", {}, postNew);
 
       expect(postNew).toHaveBeenCalledOnce();
-      expect(postNew).toHaveBeenCalledWith("Hello world!");
+      expect(postNew).toHaveBeenCalledWith("world!");
       expect(session.isStreaming).toBe(false);
     });
 
-    it("should avoid duplicate prefixes in fallback when final payload is already complete", async () => {
+    it("should post only the delta when final payload already includes accumulated prefix", async () => {
       await session.appendBlock("Hello ", {});
       deps.updateMessage.mockRejectedValueOnce(new Error("server error"));
       const postNew = vi.fn();
@@ -170,7 +172,36 @@ describe("StreamingSession", () => {
       await session.finalize("Hello world!", {}, postNew);
 
       expect(postNew).toHaveBeenCalledOnce();
-      expect(postNew).toHaveBeenCalledWith("Hello world!");
+      expect(postNew).toHaveBeenCalledWith("world!");
+      expect(session.isStreaming).toBe(false);
+    });
+
+    it("should preserve chunks missed by prior failed edits when finalize also fails", async () => {
+      // Initial post "Hello " succeeds → server shows "Hello ".
+      // Edit to "Hello world" fails → server still shows "Hello ".
+      // Finalize to "Hello world!" also fails → delta must be "world!" (based
+      // on what is rendered), not "!" (based on in-memory accumulation).
+      await session.appendBlock("Hello ", {});
+      deps.updateMessage.mockRejectedValueOnce(new Error("edit failed"));
+      await session.appendBlock("world", {});
+      deps.updateMessage.mockRejectedValueOnce(new Error("finalize failed"));
+      const postNew = vi.fn();
+
+      await session.finalize("!", {}, postNew);
+
+      expect(postNew).toHaveBeenCalledOnce();
+      expect(postNew).toHaveBeenCalledWith("world!");
+      expect(session.isStreaming).toBe(false);
+    });
+
+    it("should skip postNew when delta is empty on finalize failure", async () => {
+      await session.appendBlock("complete", {});
+      deps.updateMessage.mockRejectedValueOnce(new Error("server error"));
+      const postNew = vi.fn();
+
+      await session.finalize("complete", {}, postNew);
+
+      expect(postNew).not.toHaveBeenCalled();
       expect(session.isStreaming).toBe(false);
     });
 
@@ -186,9 +217,9 @@ describe("StreamingSession", () => {
     });
   });
 
-  describe("breakSession", () => {
+  describe("closeStream", () => {
     it("should be a no-op when not streaming", async () => {
-      await session.breakSession({});
+      await session.closeStream({});
 
       expect(deps.updateMessage).not.toHaveBeenCalled();
       expect(deps.postMessage).not.toHaveBeenCalled();
@@ -197,20 +228,36 @@ describe("StreamingSession", () => {
     it("should finalize the accumulated text when streaming", async () => {
       await session.appendBlock("partial text", {});
 
-      await session.breakSession({ data: {} });
+      await session.closeStream({ data: {} });
 
       expect(deps.updateMessage).toHaveBeenCalledWith("msg-1", "partial text", { data: {} });
       expect(session.isStreaming).toBe(false);
     });
 
-    it("should fall back to postMessage when updateMessage fails on break", async () => {
+    it("should preserve chunks missed by prior failed edits when closeStream also fails", async () => {
+      await session.appendBlock("Hello ", {});
+      deps.updateMessage.mockRejectedValueOnce(new Error("edit failed"));
+      await session.appendBlock("world", {});
+      deps.updateMessage.mockRejectedValueOnce(new Error("close failed"));
+
+      await session.closeStream({});
+
+      // Initial post + follow-up delta post; delta is the missed "world" chunk.
+      expect(deps.postMessage).toHaveBeenCalledTimes(2);
+      expect(deps.postMessage).toHaveBeenLastCalledWith("world", {});
+      expect(session.isStreaming).toBe(false);
+    });
+
+    it("should not duplicate the message when updateMessage fails on close", async () => {
+      // On close, finalText == accumulatedText, so the delta is empty and we
+      // must not post a follow-up (the original streamed message still carries
+      // the last successful edit — duplicating it would confuse the reader).
       await session.appendBlock("partial", {});
       deps.updateMessage.mockRejectedValueOnce(new Error("fail"));
 
-      await session.breakSession({ data: {} });
+      await session.closeStream({ data: {} });
 
-      expect(deps.postMessage).toHaveBeenCalledTimes(2);
-      expect(deps.postMessage).toHaveBeenLastCalledWith("partial", { data: {} });
+      expect(deps.postMessage).toHaveBeenCalledTimes(1);
       expect(session.isStreaming).toBe(false);
     });
   });

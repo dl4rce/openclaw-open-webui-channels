@@ -45,7 +45,7 @@ async function simulateDeliver(
 
   if (kind === "block" && hasMedia) {
     if (streaming.isStreaming) {
-      await streaming.breakSession(postOptions);
+      await streaming.closeStream(postOptions);
     }
     postNewMessage(text);
     return;
@@ -56,7 +56,7 @@ async function simulateDeliver(
       let finalMediaText = text;
       if (streaming.isStreaming) {
         const streamedText = streaming.currentText;
-        await streaming.breakSession(postOptions);
+        await streaming.closeStream(postOptions);
         if (finalMediaText && streamedText && finalMediaText.startsWith(streamedText)) {
           finalMediaText = finalMediaText.slice(streamedText.length);
         }
@@ -72,7 +72,7 @@ async function simulateDeliver(
 
   if (kind === "tool") {
     if (streaming.isStreaming) {
-      await streaming.breakSession(postOptions);
+      await streaming.closeStream(postOptions);
     }
     postNewMessage(text);
     return;

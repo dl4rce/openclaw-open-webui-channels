@@ -1071,7 +1071,7 @@ async function handleChannelEvent(
 
           if (kind === "block" && uploadedFiles.length > 0) {
             if (streaming.isStreaming) {
-              await streaming.breakSession(postOptions);
+              await streaming.closeStream(postOptions);
             }
             await postNewMessage(responseText, uploadedFiles, payloadRecord);
             return;
@@ -1082,7 +1082,7 @@ async function handleChannelEvent(
               let finalMediaText = responseText;
               if (streaming.isStreaming) {
                 const streamedText = streaming.currentText;
-                await streaming.breakSession(postOptions);
+                await streaming.closeStream(postOptions);
                 if (finalMediaText && streamedText && finalMediaText.startsWith(streamedText)) {
                   finalMediaText = finalMediaText.slice(streamedText.length);
                 }
@@ -1098,7 +1098,7 @@ async function handleChannelEvent(
 
           if (kind === "tool") {
             if (streaming.isStreaming) {
-              await streaming.breakSession(postOptions);
+              await streaming.closeStream(postOptions);
             }
             await postNewMessage(responseText, uploadedFiles, payloadRecord);
             return;
@@ -1137,7 +1137,7 @@ async function handleChannelEvent(
     await dispatcher.waitForIdle();
     if (streaming.isStreaming) {
       try {
-        await streaming.breakSession(lastStreamingPostOptions);
+        await streaming.closeStream(lastStreamingPostOptions);
       } catch (flushErr) {
         log?.error(`[${account.accountId}] stream flush failed: ${String(flushErr)}`);
       }
