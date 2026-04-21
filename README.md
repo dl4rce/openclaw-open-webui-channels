@@ -50,15 +50,18 @@ openclaw plugins install ./openclaw-open-webui-channels
 ## Setup for AI·Collab
 
 AI·Collab automatically creates a dedicated bot account and agent channel for you.
-You only need to copy the token and channel ID into your OpenClaw config.
+You only need to copy three values from the AI·Collab dashboard into your OpenClaw config.
 
-### Step 1 — Get your Bot Token and Channel ID
+### Step 1 — Set up OpenClaw in AI·Collab
 
-1. Go to **aicollab.app → Account → Arbeitsgruppen**
-2. If you haven't set up OpenClaw yet, click **+ OpenClaw** — the bot account and channel are created automatically
-3. On the **OpenClaw** group card, click `⋮` → **Token erneuern** (Refresh Token)
-4. Copy the **Bot OWUI Token** (full JWT string)
-5. Note the **Channel ID** from the Kanal-URL: `chat.aicollab.app/channels/<CHANNEL-ID>`
+1. Go to **[aicollab.app](https://aicollab.app) → Mein Konto (My Account) → Arbeitsgruppen (Workspaces)**
+2. Click **+ OpenClaw** — the bot account and channel are created automatically
+3. On the **OpenClaw** group card, click `⋮` → **Zugangsdaten** (Access credentials)
+4. The dialog shows all three values you need:
+   - **Base URL** — the AI·Collab chat server URL
+   - **Bot OWUI Token** — your pre-issued JWT (valid 14 days)
+   - **Channel ID** — the channel your bot is connected to
+5. Click the copy icon next to each value
 
 ### Step 2 — Configure OpenClaw
 
@@ -69,19 +72,19 @@ Edit `~/.openclaw/openclaw.json`:
   "channels": {
     "open-webui": {
       "enabled": true,
-      "baseUrl": "https://chat.aicollab.app",
+      "baseUrl": "<Base URL from Zugangsdaten dialog>",
       "email": "",
       "password": "",
-      "token": "<paste your Bot OWUI Token here>",
-      "channelIds": ["<your Channel ID>"],
+      "token": "<Bot OWUI Token from Zugangsdaten dialog>",
+      "channelIds": ["<Channel ID from Zugangsdaten dialog>"],
       "requireMention": true
     }
   }
 }
 ```
 
-> **`token`** takes priority over `email`/`password` — leave those as empty strings.
-> **`requireMention: true`** is strongly recommended so OpenClaw only responds when @mentioned.
+> **`token`** takes priority over `email`/`password` — leave those as empty strings.  
+> **`requireMention: true`** is recommended so OpenClaw only responds when @mentioned by name (e.g. `@OpenClaw`).
 
 ### Step 3 — Restart OpenClaw
 
@@ -91,16 +94,21 @@ openclaw gateway restart
 
 ### Step 4 — Verify
 
-Open the channel via the **Kanal öffnen** button on your OpenClaw group card, @mention the bot, and send a message. OpenClaw should respond.
+Open the channel via the **Kanal öffnen** (Open Channel) button on the OpenClaw group card, @mention the bot, and send a message. OpenClaw should respond within a few seconds.
 
 ### Token Renewal
 
-The JWT is valid for **14 days**. When it expires:
+The JWT is valid for **14 days**. A warning is shown in the Zugangsdaten dialog when it is about to expire. To renew:
 
-1. Click `⋮` → **Token erneuern** on the OpenClaw group card
-2. Copy the new token
-3. Replace the `token` value in `~/.openclaw/openclaw.json`
-4. `openclaw gateway restart`
+1. On the OpenClaw group card, click `⋮` → **Zugangsdaten**
+2. Click the refresh icon next to the token field to issue a fresh JWT
+3. Copy the new token
+4. Replace the `token` value in `~/.openclaw/openclaw.json`
+5. Run `openclaw gateway restart`
+
+### Removing OpenClaw
+
+To delete the bot account and channel, click `⋮` → **OpenClaw entfernen** on the group card. This removes the bot user, the channel, and all stored credentials.
 
 ---
 
