@@ -59,11 +59,27 @@ export function invalidateAuthToken(account: OpenWebUIAccount): void {
   tokenCache.delete(cacheKey);
 }
 
+/** Decode a JWT payload without verifying the signature (client-side, safe for display/logic). */
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return {};
+    const padded = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(padded.padEnd(padded.length + (4 - padded.length % 4) % 4, "="));
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 export async function getAuthToken(account: OpenWebUIAccount): Promise<{ token: string; userId: string; userName: string }> {
-  // Use pre-supplied token directly (e.g. aicollab bot JWT) — skip signin entirely
+  // Use pre-supplied token directly (e.g. aicollab bot JWT) — skip signin entirely.
+  // Decode the JWT to extract userId and userName so callers don't need to configure them.
   if (account.token) {
-    const userId = account.userId ?? "";
-    return { token: account.token, userId, userName: "" };
+    const claims = decodeJwtPayload(account.token);
+    const userId = (claims.id as string) || (claims.sub as string) || account.userId || "";
+    const userName = (claims.name as string) || (claims.email as string) || "";
+    return { token: account.token, userId, userName };
   }
 
   const cacheKey = `${account.baseUrl}:${account.email}`;

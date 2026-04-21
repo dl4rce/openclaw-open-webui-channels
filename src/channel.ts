@@ -95,8 +95,9 @@ function getAccountFromResolved(account: ResolvedOpenWebUIAccount): OpenWebUIAcc
   };
 }
 
-// Track per-account state (bot user ID + channel name cache)
+// Track per-account state (bot user ID, bot display name, channel name cache)
 const accountBotUserId = new Map<string, string>();
+const accountBotName = new Map<string, string>(); // bot's OWUI display name for mention detection
 const channelNameCache = new Map<string, string>(); // key: "accountId:channelId"
 
 type InboundMediaItem = {
@@ -603,6 +604,7 @@ async function monitorOpenWebUIProvider(options: MonitorOptions): Promise<void> 
     // Authenticate and get bot user ID
     const { userId, userName } = await getAuthToken(apiAccount);
     accountBotUserId.set(account.accountId, userId);
+    if (userName) accountBotName.set(account.accountId, userName);
     log?.info(`[${account.accountId}] authenticated as ${userName || userId}${userName ? ` (${userId})` : ""}`);
 
     // Cache channel names for metadata headers (refresh on each provider start)
@@ -771,9 +773,10 @@ async function handleChannelEvent(
     const tagPattern = `<@U:${botUserId}`;
     wasMentioned = text.includes(tagPattern);
   }
-  if (!wasMentioned && account.name) {
-    // Match @name, case-insensitive, word-boundary aware
-    const escapedName = account.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Also match plain-text @name — use decoded bot name from JWT, fall back to account.name config
+  const botDisplayName = accountBotName.get(account.accountId) || account.name;
+  if (!wasMentioned && botDisplayName) {
+    const escapedName = botDisplayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     wasMentioned = new RegExp(`@${escapedName}`, "i").test(text);
   }
 

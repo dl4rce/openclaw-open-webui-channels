@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.2-aicollab.3] - 2026-04-21 (AI·Collab fork)
+
+### Fixed
+
+- **JWT auto-decode**: `getAuthToken` now decodes the JWT payload to extract `userId` (`id`/`sub` claim) and `userName` (`name` claim) automatically — no need to configure `userId` manually when using token-auth
+- **Mention detection**: bot name now comes from the decoded JWT (`name` claim) rather than the user-configured `account.name` field, which is rarely set. Fallback chain: JWT name → `account.name` config → no plain-text match. This fixes the case where the first message worked (bot replied once) but subsequent messages were silently dropped
+
+---
+
 ## [0.4.2-aicollab.2] - 2026-04-21 (AI·Collab fork)
 
 ### Fixed
