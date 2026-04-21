@@ -60,6 +60,12 @@ export function invalidateAuthToken(account: OpenWebUIAccount): void {
 }
 
 export async function getAuthToken(account: OpenWebUIAccount): Promise<{ token: string; userId: string; userName: string }> {
+  // Use pre-supplied token directly (e.g. aicollab bot JWT) — skip signin entirely
+  if (account.token) {
+    const userId = account.userId ?? "";
+    return { token: account.token, userId, userName: "" };
+  }
+
   const cacheKey = `${account.baseUrl}:${account.email}`;
   const cached = tokenCache.get(cacheKey);
 
