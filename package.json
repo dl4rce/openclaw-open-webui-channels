@@ -1,23 +1,29 @@
 {
-  "name": "@skyzi000/open-webui",
-  "version": "0.4.2",
-  "description": "OpenClaw plugin to connect with Open WebUI Channels. Enables bidirectional communication with Open WebUI channels, making OpenClaw act as a user within Open WebUI.",
+  "name": "@dl4rce/open-webui",
+  "version": "0.4.2-aicollab.1",
+  "description": "OpenClaw plugin to connect with Open WebUI Channels. AI·Collab fork — adds token-based authentication. Enables bidirectional communication with Open WebUI channels, making OpenClaw act as a user within Open WebUI.",
   "type": "module",
   "main": "index.ts",
-  "keywords": ["openclaw", "open-webui", "channels", "plugin", "chat"],
+  "keywords": ["openclaw", "open-webui", "channels", "plugin", "chat", "aicollab"],
   "author": "Skyzi000",
+  "contributors": [
+    {
+      "name": "dl4rce / AI·Collab",
+      "url": "https://github.com/dl4rce"
+    }
+  ],
   "license": "MIT",
   "openclaw": {
     "extensions": ["./index.ts"]
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/skyzi000/openclaw-open-webui-channels.git"
+    "url": "git+https://github.com/dl4rce/openclaw-open-webui-channels.git"
   },
   "bugs": {
-    "url": "https://github.com/skyzi000/openclaw-open-webui-channels/issues"
+    "url": "https://github.com/dl4rce/openclaw-open-webui-channels/issues"
   },
-  "homepage": "https://github.com/skyzi000/openclaw-open-webui-channels#readme",
+  "homepage": "https://github.com/dl4rce/openclaw-open-webui-channels#readme",
   "dependencies": {
     "socket.io-client": "^4.7.0"
   },

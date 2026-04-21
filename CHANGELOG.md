@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.2-aicollab.1] - 2026-04-21 (AI·Collab fork)
+
+> Forked from [skyzi000/openclaw-open-webui-channels](https://github.com/skyzi000/openclaw-open-webui-channels) v0.4.2.
+
+### Added
+
+- **Token-based authentication** (`account.token`): if a pre-issued JWT is supplied in the account config, `getAuthToken` uses it directly and skips the email/password `signin` call entirely. Required for platforms that use SSO (e.g. AI·Collab) where storing a bot password is not possible or desirable.
+- Updated README with full AI·Collab setup guide (token renewal flow, channel ID lookup, `requireMention` guidance).
+
+### Changed
+
+- Package name: `@skyzi000/open-webui` → `@dl4rce/open-webui`
+- Repository and homepage URLs point to the fork at `github.com/dl4rce`
+
+---
+
 ## [0.4.2] - 2026-02-18
 
 ### Fixed
