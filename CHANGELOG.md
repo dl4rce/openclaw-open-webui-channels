@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.2-aicollab.2] - 2026-04-21 (AI·Collab fork)
+
+### Fixed
+
+- **`resolveOpenWebUIAccount`**: read `token` field from channel config (was silently ignored)
+- **`getAccountFromResolved`**: pass `token` through to the API layer
+- **`configured` check**: `Boolean(baseUrl && (token || (email && password)))` — plugin now correctly marks itself as configured when only a token is provided (no email/password)
+- **Mention detection**: Open WebUI sends channel messages as plain text; `<@U:USER_ID>` tags only appear in rendered HTML and are never in the Socket.IO event payload. Detection now also matches plain-text `@<display-name>` (case-insensitive) so `requireMention: true` works correctly
+
+### Added
+
+- `token?: string` field on `OpenWebUIChannelConfig` and `ResolvedOpenWebUIAccount` interfaces
+
+---
+
 ## [0.4.2-aicollab.1] - 2026-04-21 (AI·Collab fork)
 
 > Forked from [skyzi000/openclaw-open-webui-channels](https://github.com/skyzi000/openclaw-open-webui-channels) v0.4.2.

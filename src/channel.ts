@@ -22,7 +22,7 @@ const meta = {
   id: "open-webui",
   label: "Open WebUI",
   selectionLabel: "Open WebUI (Channels)",
-  docsPath: "https://github.com/skyzi000/openclaw-open-webui-channels#readme",
+  docsPath: "https://github.com/dl4rce/openclaw-open-webui-channels#readme",
   docsLabel: "GitHub README",
   blurb: "Open WebUI channels integration via REST API and Socket.IO.",
 };
@@ -32,6 +32,7 @@ export interface OpenWebUIChannelConfig {
   baseUrl: string;
   email: string;
   password: string;
+  token?: string;
   userId?: string;
   enabled?: boolean;
   channelIds?: string[];
@@ -45,6 +46,7 @@ export interface ResolvedOpenWebUIAccount {
   baseUrl: string;
   email: string;
   password: string;
+  token?: string;
   userId?: string;
   enabled: boolean;
   configured: boolean;
@@ -60,6 +62,7 @@ function resolveOpenWebUIAccount(cfg: OpenClawConfig, accountId?: string): Resol
   const baseUrl = channelCfg?.baseUrl ?? "";
   const email = channelCfg?.email ?? "";
   const password = channelCfg?.password ?? "";
+  const token = channelCfg?.token ?? undefined;
   const userId = channelCfg?.userId;
   const enabled = channelCfg?.enabled ?? true;
   const channelIds = channelCfg?.channelIds ?? [];
@@ -71,9 +74,10 @@ function resolveOpenWebUIAccount(cfg: OpenClawConfig, accountId?: string): Resol
     baseUrl,
     email,
     password,
+    token,
     userId,
     enabled,
-    configured: Boolean(baseUrl && email && password),
+    configured: Boolean(baseUrl && (token || (email && password))),
     channelIds,
     requireMention,
     name,
@@ -86,6 +90,7 @@ function getAccountFromResolved(account: ResolvedOpenWebUIAccount): OpenWebUIAcc
     baseUrl: account.baseUrl,
     email: account.email,
     password: account.password,
+    token: account.token,
     userId: account.userId,
   };
 }
@@ -755,17 +760,25 @@ async function handleChannelEvent(
   const apiAccount = getAccountFromResolved(account);
   const replyToId = message.id;
   const parentId = message.parent_id ?? undefined;
-  // Check for mention requirement
-  // Open WebUI native mention format: <@U:USER_ID|Name> or <@U:USER_ID>
+  // Check for mention requirement.
+  // Open WebUI sends the raw mention tag (<@U:USER_ID>) only in rendered HTML — the Socket.IO
+  // event payload contains plain text. We therefore check both formats:
+  //   1. Structured tag:  <@U:BOT_USER_ID  (future-proof if OWUI ever sends it)
+  //   2. Plain-text:      @<display-name>  (case-insensitive, what users actually type)
   const botUserId = accountBotUserId.get(account.accountId);
   let wasMentioned = false;
   if (botUserId) {
-    const mentionPattern = `<@U:${botUserId}`;
-    wasMentioned = text.includes(mentionPattern);
+    const tagPattern = `<@U:${botUserId}`;
+    wasMentioned = text.includes(tagPattern);
+  }
+  if (!wasMentioned && account.name) {
+    // Match @name, case-insensitive, word-boundary aware
+    const escapedName = account.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    wasMentioned = new RegExp(`@${escapedName}`, "i").test(text);
   }
 
   if (account.requireMention && !wasMentioned && !isDm) {
-    log?.debug?.(`[${account.accountId}] ignoring message without mention`);
+    log?.debug?.(`[${account.accountId}] ignoring message without mention (text: "${text.slice(0, 80)}")`);
     return;
   }
 
