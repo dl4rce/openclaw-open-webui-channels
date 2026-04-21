@@ -4,6 +4,9 @@
 
 A plugin that connects OpenClaw to Open WebUI Channels. Enables OpenClaw to act as a user within Open WebUI and engage in bidirectional communication in channels.
 
+> **This is the AI·Collab fork** ([dl4rce/openclaw-open-webui-channels](https://github.com/dl4rce/openclaw-open-webui-channels)) of the original plugin by [Skyzi000](https://github.com/skyzi000/openclaw-open-webui-channels).
+> It adds **token-based authentication** so the plugin works with AI·Collab's SSO architecture — no email/password required.
+
 ## Features
 
 - 🔌 **Real-time Connection**: Instant message sending and receiving via REST API and Socket.IO
@@ -12,12 +15,15 @@ A plugin that connects OpenClaw to Open WebUI Channels. Enables OpenClaw to act 
 - 🧵 **Thread Support**: Handle threads and replies
 - 👍 **Reactions**: Add and remove reactions on messages
 - ⌨️ **Typing Indicator**: Display when OpenClaw is composing a reply
-- 📊 **Rich Rendering**: Take advantage of Open WebUI's excellent Markdown support — tables, syntax-highlighted code blocks, LaTeX math, and more render beautifully compared to platforms like Discord
+- 📊 **Rich Rendering**: Tables, syntax-highlighted code blocks, LaTeX math
+- 🔑 **Token Auth** *(AI·Collab fork only)*: Accepts a pre-issued JWT directly — no email/password sign-in needed
 
 ## Requirements
 
-- OpenClaw
+- [OpenClaw](https://docs.openclaw.ai/)
 - Open WebUI with Channels feature enabled
+
+---
 
 ## Installation
 
@@ -26,60 +32,89 @@ A plugin that connects OpenClaw to Open WebUI Channels. Enables OpenClaw to act 
 Tell OpenClaw:
 
 ```
-https://github.com/skyzi000/openclaw-open-webui-channels
+https://github.com/dl4rce/openclaw-open-webui-channels
 I want to use this plugin
 ```
 
 OpenClaw will automatically clone the repository and install it.
 
-### Manual Installation (Reference)
+### Manual Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/skyzi000/openclaw-open-webui-channels.git
-
-# Install to OpenClaw
+git clone https://github.com/dl4rce/openclaw-open-webui-channels.git
 openclaw plugins install ./openclaw-open-webui-channels
 ```
 
-## Setup
+---
 
-### 1. Open WebUI Preparation
+## Setup for AI·Collab
 
-Create a dedicated bot user account on Open WebUI for this plugin:
+AI·Collab automatically creates a dedicated bot account and agent channel for you.
+You only need to copy the token and channel ID into your OpenClaw config.
 
-1. Access Open WebUI
-2. Add a new user via Admin Panel > Users > "+" button (e.g., `openclaw-bot@yourdomain.com`)
-   - Open WebUI typically has email verification disabled, so non-existent email addresses work fine
-3. Invite/add the created bot user to the channels you want OpenClaw to connect to
-4. Note down the email address and password
+### Step 1 — Get your Bot Token and Channel ID
 
-> **💡 Tip**: Strongly recommended to create a dedicated bot account for OpenClaw rather than using a personal account.
+1. Go to **aicollab.app → Account → Arbeitsgruppen**
+2. If you haven't set up OpenClaw yet, click **+ OpenClaw** — the bot account and channel are created automatically
+3. On the **OpenClaw** group card, click `⋮` → **Token erneuern** (Refresh Token)
+4. Copy the **Bot OWUI Token** (full JWT string)
+5. Note the **Channel ID** from the Kanal-URL: `chat.aicollab.app/channels/<CHANNEL-ID>`
 
-### 2. OpenClaw Configuration
+### Step 2 — Configure OpenClaw
 
-#### Method A: Ask OpenClaw (Recommended)
+Edit `~/.openclaw/openclaw.json`:
 
-After installing the plugin, tell OpenClaw in a **secure chat environment** (WebUI, TUI, etc.):
-
+```json
+{
+  "channels": {
+    "open-webui": {
+      "enabled": true,
+      "baseUrl": "https://chat.aicollab.app",
+      "email": "",
+      "password": "",
+      "token": "<paste your Bot OWUI Token here>",
+      "channelIds": ["<your Channel ID>"],
+      "requireMention": true
+    }
+  }
+}
 ```
-I want to connect to Open WebUI Channels
+
+> **`token`** takes priority over `email`/`password` — leave those as empty strings.
+> **`requireMention: true`** is strongly recommended so OpenClaw only responds when @mentioned.
+
+### Step 3 — Restart OpenClaw
+
+```bash
+openclaw gateway restart
 ```
 
-OpenClaw will ask for the necessary information. Provide:
+### Step 4 — Verify
 
-- **Base URL**: Open WebUI URL (e.g., `http://your-server:3000`)
-- **Email**: Bot user email address
-- **Password**: Bot user password
-- **Channel IDs** (optional): Specific channel IDs to monitor (monitors all channels if omitted)
+Open the channel via the **Kanal öffnen** button on your OpenClaw group card, @mention the bot, and send a message. OpenClaw should respond.
 
-OpenClaw will automatically update the configuration file (`~/.openclaw/openclaw.json` in the `channels.open-webui` section) and restart as needed.
+### Token Renewal
 
-> **🔒 Security**: Contains authentication credentials, so configure in a secure chat environment that is not intercepted.
+The JWT is valid for **14 days**. When it expires:
 
-#### Method B: Manual Configuration
+1. Click `⋮` → **Token erneuern** on the OpenClaw group card
+2. Copy the new token
+3. Replace the `token` value in `~/.openclaw/openclaw.json`
+4. `openclaw gateway restart`
 
-You can also directly edit `~/.openclaw/openclaw.json`:
+---
+
+## Setup for self-hosted Open WebUI (email/password)
+
+If you are running your own Open WebUI instance without AI·Collab's SSO, use the original email/password method:
+
+### 1. Create a bot user in Open WebUI
+
+1. Go to **Admin Panel → Users → +**
+2. Create a user, e.g. `openclaw-bot@yourdomain.com`
+3. Add the bot user to the channels you want OpenClaw to monitor
+
+### 2. Configure OpenClaw
 
 ```json
 {
@@ -96,50 +131,38 @@ You can also directly edit `~/.openclaw/openclaw.json`:
 }
 ```
 
-After configuration, restart OpenClaw:
+---
 
-```bash
-openclaw gateway restart
-```
+## ⚠️ Security Notice
 
-### 3. Verification
+Sender filtering (allow lists) is not yet implemented. Anyone with access to the connected channel can send instructions to OpenClaw. Only use this plugin in channels accessible to trusted users.
 
-After setup is complete, **mention the bot user by its username** in the connected Open WebUI channel (e.g., `@OpenClaw` if you named the user "OpenClaw") and send a message. If OpenClaw responds, the connection is successful.
-
-## ⚠️ Important Notice
-
-Sender control (allow lists, etc.) is not yet implemented. Anyone with access to the connected Open WebUI channel can send instructions to OpenClaw. Use this plugin only in channels accessible to trusted users.
-
-## Usage
-
-Once setup is complete, OpenClaw will monitor messages in the specified channels and respond to mentions.
-
-### Basic Usage
-
-- **Chat with OpenClaw**: Mention OpenClaw in the channel to talk
-- **File Sending**: OpenClaw can send and receive images and files
-- **Thread Support**: Conversations within threads are properly handled
+---
 
 ## Troubleshooting
 
-If you encounter issues, tell OpenClaw via another channel (WebUI, TUI, etc.):
+Tell OpenClaw via another interface (WebUI, TUI, etc.):
 
 ```
 The Open WebUI Channels plugin isn't working. Debug it
 ```
 
-OpenClaw will automatically check logs and configuration to diagnose and fix the problem.
+OpenClaw will check logs and configuration automatically.
+
+---
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
-## Author
+## Credits
 
-[Skyzi000](https://github.com/skyzi000)'s OpenClaw - This plugin was written by OpenClaw
+Original plugin by [Skyzi000](https://github.com/skyzi000/openclaw-open-webui-channels).
+Token-auth patch by [dl4rce / AI·Collab](https://github.com/dl4rce).
 
 ## Links
 
-- [GitHub Repository](https://github.com/skyzi000/openclaw-open-webui-channels)
-- [Issues & Feature Requests](https://github.com/skyzi000/openclaw-open-webui-channels/issues)
-- [OpenClaw Official Documentation](https://docs.openclaw.ai/)
+- [This fork (AI·Collab)](https://github.com/dl4rce/openclaw-open-webui-channels)
+- [Upstream repository](https://github.com/skyzi000/openclaw-open-webui-channels)
+- [OpenClaw Documentation](https://docs.openclaw.ai/)
+- [AI·Collab](https://aicollab.app)
