@@ -20,6 +20,10 @@ A plugin that connects OpenClaw to Open WebUI Channels. Enables OpenClaw to act 
 
 ## Requirements
 
+- Node.js **22.23.4** for local development (`.node-version`). `engines.node` accepts patched Node 22, 24 from 24.22.1, or 26 from 26.12.1 onward, including future majors. See [CVE-2026-111497 / October 2026 security releases](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases).
+- The **OpenClaw host process** must independently run a patched Node version satisfying these floors. Installing this plugin does not upgrade an existing host runtime. No deployed host was accessed, changed or integration-tested.
+- `npm ci` uses the checked-in dependency lock. Standalone `tsc --noEmit` currently requires the external `openclaw/plugin-sdk` and Node type declarations not supplied by this repository; this baseline limitation is not fixed by a runtime pin.
+
 - [OpenClaw](https://docs.openclaw.ai/)
 - Open WebUI with Channels feature enabled
 
